@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/tmc/addressenrich/usps"
+	"github.com/tmc/address-enrich/usps"
 )
 
 func main() {
