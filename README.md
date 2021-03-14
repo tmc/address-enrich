@@ -9,7 +9,7 @@ Command address-enrich adds a column to csv files that includes normalized aaddr
 
 ## Installation
 
-address-enrich is a [Go](https://golang.org/) program for MacOS systems.
+address-enrich is a [Go](https://golang.org/) program.
 
 Presming  you have a working Go insallation, you can install `address-enrich` via:
 
