@@ -104,7 +104,7 @@ func run(opts RunOptions) int {
 				resp, err := u.ZipByAddress(a)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err, a.Address1)
-					os.Exit(1)
+					continue
 				}
 				address := resp.Address()
 				if opts.Verbose {
