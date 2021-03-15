@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/tmc/address-enrich/usps"
 )
@@ -18,6 +19,7 @@ func main() {
 	var flagVerbose = flag.Bool("v", false, "verbose mode")
 	var flagSkipRows = flag.Int("skip-rows", 1, "rows to skip")
 	var flagStartIndex = flag.Int("start-column", 0, "column start index")
+	var flagConcurrency = flag.Int("concurrency", 1, "concurrency level")
 	flag.Parse()
 
 	os.Exit(run(RunOptions{
@@ -25,6 +27,7 @@ func main() {
 		Verbose:     *flagVerbose,
 		SkipRows:    *flagSkipRows,
 		StartColumn: *flagStartIndex,
+		Concurrency: *flagConcurrency,
 	}))
 }
 
@@ -33,6 +36,7 @@ type RunOptions struct {
 	Verbose     bool
 	SkipRows    int
 	StartColumn int
+	Concurrency int
 }
 
 func run(opts RunOptions) int {
@@ -61,39 +65,59 @@ func run(opts RunOptions) int {
 		return s[i]
 	}
 
+	lineChan := make(chan string)
+
 	scanner := bufio.NewScanner(file)
 	rowIndex := 0
-	for scanner.Scan() {
-		rowIndex++
-		if rowIndex <= opts.SkipRows {
-			continue
+	go func() {
+		for scanner.Scan() {
+			rowIndex++
+			if rowIndex <= opts.SkipRows {
+				continue
+			}
+			lineChan <- scanner.Text()
 		}
-		line := scanner.Text()
-		parts := strings.Split(line, ",")
-		// TODO: this is pretty hacky, it expects these fields to all be present
-		a := usps.Address{
-			Address1: idx(parts, 0+opts.StartColumn),
-			City:     idx(parts, 1+opts.StartColumn),
-			State:    idx(parts, 2+opts.StartColumn),
-			Zip5:     idx(parts, 3+opts.StartColumn),
+		if err := scanner.Err(); err != nil {
+			log.Fatal(err)
 		}
-		resp, err := u.ZipByAddress(a)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err, a.Address1)
-		}
-		address := resp.Address()
-		if opts.Verbose {
-			fmt.Printf("%+v\n", address)
-		}
-		fmt.Println(strings.Join([]string{
-			line,
-			address.AddressLine1,
-		}, ","))
-	}
+		close(lineChan)
+	}()
 
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-		return -1
+	var wg sync.WaitGroup
+	for i := 0; i < opts.Concurrency; i++ {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			for {
+				line, ok := <-lineChan
+				if !ok {
+					return
+				}
+				parts := strings.Split(line, ",")
+				// TODO: this is pretty hacky, it expects these fields to all be present
+				a := usps.Address{
+					Address1: idx(parts, 0+opts.StartColumn),
+					City:     idx(parts, 1+opts.StartColumn),
+					State:    idx(parts, 2+opts.StartColumn),
+					Zip5:     idx(parts, 3+opts.StartColumn),
+				}
+				resp, err := u.ZipByAddress(a)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err, a.Address1)
+					os.Exit(1)
+				}
+				address := resp.Address()
+				if opts.Verbose {
+					fmt.Printf("%+v\n", address)
+				}
+				fmt.Println(strings.Join([]string{
+					line,
+					address.AddressLine1,
+				}, ","))
+			}
+		}(&wg)
 	}
+	wg.Wait()
+
 	return 0
 }

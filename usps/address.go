@@ -213,9 +213,6 @@ func (z ZipByAddressResponse) Address() AddressResponse {
 
 func (c *Client) ZipByAddress(address Address) (*ZipByAddressResponse, error) {
 	result := &ZipByAddressResponse{}
-	if c.Username == "" {
-		return nil, ErrMissingUsername
-	}
 	params := url.Values{}
 	params.Add("address1", address.Address1)
 	params.Add("address2", address.Address2)
